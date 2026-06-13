@@ -1,0 +1,24 @@
+services:
+  elon-sleep-awake:
+    build: .
+    image: elon-sleep-awake:latest
+    container_name: elon-sleep-awake
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - DATA_DIR=/app/data
+    volumes:
+      - elon-data:/app/data
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  elon-data:
+    external: true
+    name: elon-data
