@@ -10,7 +10,7 @@ services:
       - TZ=America/New_York
       - DATA_DIR=/app/data
     volumes:
-      - elon-shared-data:/app/data
+      - predictor-data:/app/data
     networks:
       - proxy
 
