@@ -12,8 +12,9 @@ import csv
 import time
 
 # â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-CSV_FILENAME    = "elonmusk_tweet_history.csv"
-OUTPUT_FILENAME = "final_output_v2.txt"
+_DATA           = os.environ.get("DATA_DIR", ".")
+CSV_FILENAME    = os.path.join(_DATA, "elonmusk_tweet_history.csv")
+OUTPUT_FILENAME = os.path.join(_DATA, "final_output_v2.txt")
 
 SLEEP_GAP_HOURS      = 3.0
 EARLIEST_BEDTIME_H   = 22
