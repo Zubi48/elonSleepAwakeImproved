@@ -10,7 +10,7 @@ services:
       - TZ=America/New_York
       - DATA_DIR=/app/data
     volumes:
-      - elon-tweet-predictor:/app/data
+      - predictor-data:/app/data
     networks:
       - proxy
 
@@ -19,6 +19,6 @@ networks:
     external: true
 
 volumes:
-  elon-tweet-predictor:
+  predictor-data:
     external: true
-    name: elon-tweet-predictor
+    name: predictor-data
