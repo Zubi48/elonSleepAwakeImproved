@@ -20,4 +20,5 @@ networks:
 
 volumes:
   predictor-data:
-    name: elon-sleep-awake-data
+    external: true
+    name: elon-tweet-predictor-data
