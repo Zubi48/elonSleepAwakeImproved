@@ -1,4 +1,4 @@
-﻿"""Sleep/wake conditional probability + next-tweet prediction â€” v2.
+"""Sleep/wake conditional probability + next-tweet prediction - v2.
 """
 
 import pandas as pd
@@ -11,7 +11,7 @@ import os
 import csv
 import time
 
-# â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Configuration ============================================================
 _DATA           = os.environ.get("DATA_DIR", ".")
 CSV_FILENAME    = os.path.join(_DATA, "elonmusk_tweet_history.csv")
 OUTPUT_FILENAME = os.path.join(_DATA, "final_output_v2.txt")
@@ -26,16 +26,16 @@ MORNING_SESSION_MIN  = 90
 ANOMALY_GAP_MULT     = 2.5
 EST                  = pytz.timezone("America/New_York")
 
-# â”€â”€ Sleep-State Inference Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-SLEEP_INFER_NOW        = None    # "6/12/2026 02:30" (EST) or None â†’ current clock time
-SLEEP_INFER_LAST_TWEET = None    # "6/12/2026 01:10" (EST) or None â†’ most recent tweet in CSV
+# == Sleep-State Inference Configuration ======================================
+SLEEP_INFER_NOW        = None    # "6/12/2026 02:30" (EST) or None -> current clock time
+SLEEP_INFER_LAST_TWEET = None    # "6/12/2026 01:10" (EST) or None -> most recent tweet in CSV
 SHRINK_KAPPA           = 8.0     # fallback shrinkage strength; v2 tunes kappa by CV (#8)
 KAPPA_GRID             = [2.0, 4.0, 8.0, 16.0, 32.0]
 SCENARIO_LAST_HOURS    = [22, 23, 24, 25, 26, 27]   # last-tweet clock: 10PM..3AM (session scale)
 SCENARIO_SILENCE_MIN   = [30, 60, 90, 120, 180, 240, 300, 360]
 CONFIRM_TARGETS        = [0.80, 0.90, 0.95]
 CONFIRM_SEARCH_MAX_MIN = 480     # search silence thresholds up to 8 h
-DIRECT_MATCH_TOL_H     = 0.75    # Â±45 min last-tweet-time tolerance for empirical cross-check
+DIRECT_MATCH_TOL_H     = 0.75    # +/-45 min last-tweet-time tolerance for empirical cross-check
 NIGHT_END_SESSION_H    = 29      # next tweet at/after 5 AM (session hour 29) ends the night
 MAX_WAKE_SESSION_H     = 38      # ignore multi-day disappearances when modelling wake times
 
@@ -43,7 +43,7 @@ MAX_WAKE_SESSION_H     = 38      # ignore multi-day disappearances when modellin
 # instead of floor-hour bins, widened until the pool is adequately populated.
 EVIDENCE_S0_TOL_H      = 0.75            # base kernel half-width (hours)
 EVIDENCE_TOL_WIDEN     = [0.75, 1.5, 3.0]
-WAKE_BEDTIME_TOL_H     = 1.5             # (#3) wake distribution conditioned on bedtime Â± this
+WAKE_BEDTIME_TOL_H     = 1.5             # (#3) wake distribution conditioned on bedtime +/- this
 WEEKDAY_POOL_WEIGHT    = 2.0             # (#5) same-weekday rows up-weighted in quantile pools
 TIER_POOL_WEIGHT       = 1.5             # (#5) matching-activity-tier rows up-weighted
 PRED_QUANTILES         = [0.25, 0.50, 0.75, 0.90]
@@ -54,24 +54,24 @@ PRED_QUANTILES         = [0.25, 0.50, 0.75, 0.90]
 INGEST_LAG_MIN         = 0.0
 
 # Sleep zone (used for the regime-matched base rate and display; v2 no longer
-# pins P(asleep)=0 outside it â€” see #6).
-SLEEP_ZONE_START_S     = float(EARLIEST_BEDTIME_H)   # 22.0 â†’ 10 PM EST
-SLEEP_ZONE_END_S       = float(LATEST_WAKE_H + 24)   # 37.0 â†’ 1 PM EST next day
+# pins P(asleep)=0 outside it - see #6).
+SLEEP_ZONE_START_S     = float(EARLIEST_BEDTIME_H)   # 22.0 -> 10 PM EST
+SLEEP_ZONE_END_S       = float(LATEST_WAKE_H + 24)   # 37.0 -> 1 PM EST next day
 
-# â”€â”€ Monitor Mode Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Monitor Mode Configuration ===============================================
 MONITOR_INTERVAL_MIN   = 1
 MONITOR_LOG_FILENAME   = os.path.join(_DATA, "next_tweet_monitor_log_v2.csv")
 MONITOR_MAX_QUEUED     = 500
 DAILY_REPORT_HOUR_EST  = 22
 
-# â”€â”€ Activity Covariate Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Activity Covariate Configuration =========================================
 ACTIVITY_WINDOWS_H     = [1, 2, 3, 4, 6, 8, 12, 24]
 ACTIVITY_TIER_LABELS   = ["LOW", "MID", "HIGH"]
 ACTIVITY_CV_FOLDS      = 5
 ACTIVITY_MIN_BIN_N     = 30
 ACTIVITY_MIN_FOLDS_POS = 4    # (#7) adoption also needs >= this many positive folds
 
-# â”€â”€ Launch Day Timestamps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Launch Day Timestamps =====================================================
 LAUNCH_TIMESTAMPS_UTC = [
     "2026-04-14T09:23:00Z", "2026-04-11T11:41:00Z", "2026-04-11T05:04:00Z",
     "2026-04-07T02:50:00Z", "2026-04-02T11:55:00Z", "2026-03-30T23:15:00Z",
@@ -92,7 +92,7 @@ LAUNCH_TIMESTAMPS_UTC = [
 
 DAYS_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
-# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Helpers ==================================================================
 def fmt_time(dt):
     if dt is None or (isinstance(dt, float) and np.isnan(dt)):
         return "N/A"
@@ -157,7 +157,7 @@ def _weighted_quantiles(values, weights, qs):
     cw = (cw - 0.5 * w) / cw[-1]
     return [float(np.interp(q, cw, v)) for q in qs]
 
-# â”€â”€ Core Data Functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Core Data Functions =====================================================
 def load_data(filename):
     df = pd.read_csv(filename)
     df.columns = [c.strip() for c in df.columns]
@@ -230,7 +230,7 @@ def get_launch_dates_est():
         launch_dates.add(dt_est.date())
     return launch_dates
 
-# â”€â”€ Sleep Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Sleep Summary ============================================================
 def sleep_analysis_subset(sp_df, label, file):
     print("\n" + "=" * 70, file=file)
     print(f"  PER-WEEKDAY SLEEP SUMMARY [{label}]", file=file)
@@ -269,38 +269,38 @@ def sleep_analysis_subset(sp_df, label, file):
         p_bed_lt5 = (bt < 5).mean()
         p_morn_lt5 = (mt < 5).mean()
 
-        print(f"\n  â”Œâ”€ {day.upper()} ({n} nights) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€", file=file)
-        print(f"  â”‚ Avg bedtime : {avg_sleep_str} | Avg wake-up : {avg_wake_str}", file=file)
-        print(f"  â”‚ Earliest bed : {fmt_time(earliest_sleep)} ({earliest_sleep.strftime('%Y-%m-%d')}) | "
+        print(f"\n  += {day.upper()} ({n} nights) ========================================", file=file)
+        print(f"  | Avg bedtime : {avg_sleep_str} | Avg wake-up : {avg_wake_str}", file=file)
+        print(f"  | Earliest bed : {fmt_time(earliest_sleep)} ({earliest_sleep.strftime('%Y-%m-%d')}) | "
               f"Latest bed : {fmt_time(latest_sleep)} ({latest_sleep.strftime('%Y-%m-%d')})", file=file)
-        print(f"  â”‚ Earliest wake : {fmt_time(earliest_wake)} ({earliest_wake.strftime('%Y-%m-%d')}) | "
+        print(f"  | Earliest wake : {fmt_time(earliest_wake)} ({earliest_wake.strftime('%Y-%m-%d')}) | "
               f"Latest wake : {fmt_time(latest_wake)} ({latest_wake.strftime('%Y-%m-%d')})", file=file)
-        print(f"  â”‚ Sleep duration: avg={avg_sleep_dur:.1f}h min={min_sleep_dur:.1f}h max={max_sleep_dur:.1f}h", file=file)
-        print(f"  â”‚ Bed session : avg={bt.mean():.1f} tweets P(<5)={p_bed_lt5:.1%}", file=file)
-        print(f"  â”‚ Morn session : avg={mt.mean():.1f} tweets P(<5)={p_morn_lt5:.1%}", file=file)
-        print(f"  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€", file=file)
+        print(f"  | Sleep duration: avg={avg_sleep_dur:.1f}h min={min_sleep_dur:.1f}h max={max_sleep_dur:.1f}h", file=file)
+        print(f"  | Bed session : avg={bt.mean():.1f} tweets P(<5)={p_bed_lt5:.1%}", file=file)
+        print(f"  | Morn session : avg={mt.mean():.1f} tweets P(<5)={p_morn_lt5:.1%}", file=file)
+        print(f"  +========================================================", file=file)
 
 
-# â”€â”€ Sleep-State Inference (v2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Sleep-State Inference (v2) ===============================================
 #
-# Evidence at query time Ï„: last tweet at Ï„0 = Ï„ âˆ’ g, silent for g hours.
-# Every historical inter-tweet gap is one trial. Classes (#1) â€” all three are
+# Evidence at query time tau: last tweet at tau0 = tau - g, silent for g hours.
+# Every historical inter-tweet gap is one trial. Classes (#1) - all three are
 # OBSERVABLE (no label noise):
-#   terminal   â€” gap >= SLEEP_GAP_HOURS and ends at/after NIGHT_END_SESSION_H
+#   terminal   - gap >= SLEEP_GAP_HOURS and ends at/after NIGHT_END_SESSION_H
 #                (5 AM): the silence demonstrably lasted until morning.
-#   shortnight â€” gap >= SLEEP_GAP_HOURS starting in the bedtime window but
+#   shortnight - gap >= SLEEP_GAP_HOURS starting in the bedtime window but
 #                ending BEFORE 5 AM: a short night sleep that ended early.
-#   awake      â€” everything else.
+#   awake      - everything else.
 #
 # Two posteriors are estimated from the same evidence pool (#1):
-#   p_until_morning â€” P(terminal): the betting-relevant "no more tweets until
+#   p_until_morning - P(terminal): the betting-relevant "no more tweets until
 #                     5 AM" event; shortnight gaps are real negatives here.
-#   p_asleep        â€” P(terminal or shortnight): "currently in a night-rest
+#   p_asleep        - P(terminal or shortnight): "currently in a night-rest
 #                     gap"; the sleep-state interpretation.
 # Estimation is by direct conditioning (#2): among gaps that started within a
-# Â±EVIDENCE_S0_TOL_H kernel of Ï„0's clock time AND lasted at least g, the
-# (kernel-weighted) positive share. Shrinkage chain: regime base rate â†’
-# kernel pool â†’ activity tier, each with Îº pseudo-counts (Îº tuned by grouped
+# +/-EVIDENCE_S0_TOL_H kernel of tau0's clock time AND lasted at least g, the
+# (kernel-weighted) positive share. Shrinkage chain: regime base rate ->
+# kernel pool -> activity tier, each with kappa pseudo-counts (kappa tuned by grouped
 # CV, #8). The weekday enters as a log-odds main effect estimated from all
 # gaps on the same regime side (#8), and the credible band is the Beta
 # posterior implied by the shrinkage (#4).
@@ -310,11 +310,11 @@ def sleep_analysis_subset(sp_df, label, file):
 # two-branch mixture expectation is kept as a secondary diagnostic with the
 # wake branch conditioned on bedtime proximity (#3).
 #
-# Session-hour scale: anchored at 1 PM EST so one night (13:00 â†’ 12:59 next
+# Session-hour scale: anchored at 1 PM EST so one night (13:00 -> 12:59 next
 # day) is contiguous: 22 = 10 PM, 24 = midnight, 26 = 2 AM, 33 = 9 AM.
 # Kernels do not wrap across the 1 PM boundary (negligible: lowest-stakes hour
-# of the cycle). end_s = s0 + elapsed drifts Â±1h from clock time on the two
-# DST nights per year â€” accepted.
+# of the cycle). end_s = s0 + elapsed drifts +/-1h from clock time on the two
+# DST nights per year - accepted.
 
 def session_hour(dt):
     h = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
@@ -396,7 +396,7 @@ class SleepStateModel:
         self.terminal = self.core[(self.core["kind"] == "terminal") &
                                   (self.core["end_s"] <= MAX_WAKE_SESSION_H)]
 
-    # â”€â”€ shrinkage / fold helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # == shrinkage / fold helpers =============================================
     def _shrink(self, k, n, prior_p):
         return (k + self.kappa * prior_p) / (n + self.kappa)
 
@@ -411,7 +411,7 @@ class SleepStateModel:
 
     def _tune_kappa(self):
         """Pick kappa by grouped block-CV log-loss of the hour-conditional
-        terminal model â€” the same shrinkage structure the live estimator
+        terminal model - the same shrinkage structure the live estimator
         uses (#8)."""
         g = self.core
         folds = g["anchor"].map(self._fold_of)
@@ -455,9 +455,9 @@ class SleepStateModel:
             out[d] = _logit(p_d) - _logit(p_all)
         return out
 
-    # â”€â”€ evidence pools (#2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # == evidence pools (#2) ==================================================
     def _evidence_pool(self, last_s, silence_min, frame=None, tol=EVIDENCE_S0_TOL_H):
-        """Gaps matching the evidence: started within Â±tol (session hours) of
+        """Gaps matching the evidence: started within +/-tol (session hours) of
         the last tweet's clock time AND silent at least as long as observed.
         Returns rows and triangular kernel weights (floor 0.1) in start-time
         distance. This conditions on the observed silence directly, unlike
@@ -469,7 +469,7 @@ class SleepStateModel:
         w = 1.0 - 0.9 * (d[m] / max(tol, 1e-9))
         return sub, w
 
-    # â”€â”€ Activity covariate machinery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # == Activity covariate machinery ========================================
     @staticmethod
     def _tier_from_bounds(value, bounds):
         if bounds is None or value is None:
@@ -500,7 +500,7 @@ class SleepStateModel:
         (#7). Adoption rule per window: mean CV skill minus one fold-SE > 0
         AND >= ACTIVITY_MIN_FOLDS_POS folds positive (winner's-curse guard).
         Sleep-onset scored on all non-ambiguous gaps (Bernoulli log-loss);
-        duration scored on AWAKE gaps only â€” the deployed quantity (#7)."""
+        duration scored on AWAKE gaps only - the deployed quantity (#7)."""
         if self.act_sel is not None:
             return self.act_sel
 
@@ -525,7 +525,7 @@ class SleepStateModel:
                 tr = tr.assign(tier=self._assign_tiers(tr, col, bounds))
                 te = te.assign(tier=self._assign_tiers(te, col, bounds))
 
-                # â€” sleep-onset models â€”
+                # - sleep-onset models -
                 p_glob = tr["is_term"].mean()
                 agg = tr.groupby("hour_bin")["is_term"].agg(["sum", "count"])
                 p_bin = (agg["sum"] + self.kappa * p_glob) / (agg["count"] + self.kappa)
@@ -545,7 +545,7 @@ class SleepStateModel:
                 n_ll += len(te)
                 ll_rates.append(gain / max(len(te), 1))
 
-                # â€” duration models: awake gaps only (#7) â€”
+                # - duration models: awake gaps only (#7) -
                 tr_aw = tr[tr["kind"] == "awake"]
                 te_aw = te[te["kind"] == "awake"]
                 if tr_aw.empty or te_aw.empty:
@@ -623,15 +623,15 @@ class SleepStateModel:
                         "effects": effects}
         return self.act_sel
 
-    # â”€â”€ posterior (#1, #2, #4, #8) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # == posterior (#1, #2, #4, #8) ===========================================
     def p_asleep(self, weekday, last_s, silence_min, activity_count=None):
         """Two posteriors from one kernel evidence pool (#1):
-          primary return â€” P(asleep: currently in a night-rest gap), i.e.
+          primary return - P(asleep: currently in a night-rest gap), i.e.
                            positive = terminal OR shortnight;
-          components['p_term'] (+band) â€” P(no more tweets until 5 AM), i.e.
+          components['p_term'] (+band) - P(no more tweets until 5 AM), i.e.
                            positive = terminal only (the betting event).
         Pool conditioned on the observed silence (#2), kappa-shrunk through
-        regime base â†’ pool â†’ activity tier; weekday applied as a log-odds
+        regime base -> pool -> activity tier; weekday applied as a log-odds
         main effect (#8); credible band = the Beta posterior implied by the
         shrinkage prior, shifted by the same weekday offset (#4)."""
         silence_min = max(silence_min, 0.0)
@@ -693,11 +693,11 @@ class SleepStateModel:
                       "term_k_pool": d_t["k_pool"]}
         return p_n, lo_n, hi_n, components
 
-    # â”€â”€ predictive distribution of the next tweet (#5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # == predictive distribution of the next tweet (#5) ======================
     def next_tweet_quantiles(self, weekday, last_s, silence_min, act_dur=None):
         """Weighted quantiles of the next-tweet session-hour, directly from
         end times of evidence-matched gaps. Weights: triangular kernel in
-        start-time distance Ã— WEEKDAY_POOL_WEIGHT for same-weekday rows Ã—
+        start-time distance x WEEKDAY_POOL_WEIGHT for same-weekday rows x
         TIER_POOL_WEIGHT for matching-activity-tier rows. The kernel widens
         until the pool is adequately populated; final fallback is the
         bedtime-agnostic wake distribution."""
@@ -728,12 +728,12 @@ class SleepStateModel:
         qs = _weighted_quantiles(vals, wts, PRED_QUANTILES)
         return dict(zip(PRED_QUANTILES, qs)), float(np.sum(wts))
 
-    # â”€â”€ two-branch expectation (secondary diagnostic; #3 wake conditioning) â”€â”€
+    # == two-branch expectation (secondary diagnostic; #3 wake conditioning) ==
     def expected_next_tweet(self, weekday, last_s, silence_min,
                             act_sleep=None, act_dur=None):
         """Posterior-weighted expected session-hour of the next tweet. The
         sleep branch (terminal + shortnight ends) conditions on bedtime
-        proximity (Â±WAKE_BEDTIME_TOL_H, widening; #3); the awake branch uses
+        proximity (+/-WAKE_BEDTIME_TOL_H, widening; #3); the awake branch uses
         kernel-matched awake gaps."""
         p_sleep, _, _, _ = self.p_asleep(weekday, last_s, silence_min, act_sleep)
         silence_min = max(silence_min, 0.0)
@@ -784,7 +784,7 @@ class SleepStateModel:
 
 def direct_empirical_check(tweet_times, weekday, last_s, silence_min):
     """Model-free cross-check: among historical nights of this weekday where
-    the last tweet fell within Â±45 min of the same clock time and silence had
+    the last tweet fell within +/-45 min of the same clock time and silence had
     reached the query time, how many stayed silent until the morning
     (next tweet at/after NIGHT_END_SESSION_H, i.e. 5 AM)?"""
     times = tweet_times.drop_duplicates().sort_values().reset_index(drop=True)
@@ -815,7 +815,7 @@ def direct_empirical_check(tweet_times, weekday, last_s, silence_min):
 
 def session_to_datetime(anchor_date, s):
     """Convert a session-hour (hours since midnight of the anchor date) to an
-    absolute EST datetime: 26.5 on anchor 2026-06-11 â†’ 2026-06-12 02:30 EST."""
+    absolute EST datetime: 26.5 on anchor 2026-06-11 -> 2026-06-12 02:30 EST."""
     naive = datetime.combine(anchor_date, datetime.min.time()) + timedelta(hours=s)
     return EST.localize(naive)
 
@@ -831,7 +831,7 @@ def count_recent_tweets(tweet_times, t_end, hours):
 
 def evaluate_current_state(model, tweet_times, now=None, last_tweet=None):
     """Single source of truth for the live estimate. v2 (#6): no hard daytime
-    pin â€” p_terminal (P(no more tweets until tomorrow morning)) is reported in
+    pin - p_terminal (P(no more tweets until tomorrow morning)) is reported in
     both regimes; the estimator's own bedtime prior keeps it near zero in the
     daytime without a discontinuity at the 10 PM boundary. The regime label is
     kept for display and the regime-matched base rate. Live silence is
@@ -898,32 +898,32 @@ def sleep_state_inference(tweet_times, f):
     model = SleepStateModel(gap_obs)
 
     print("\n" + "=" * 70, file=f)
-    print("  SLEEP-STATE INFERENCE v2 â€” P(asleep | last tweet time, silence)", file=f)
+    print("  SLEEP-STATE INFERENCE v2 - P(asleep | last tweet time, silence)", file=f)
     print("=" * 70, file=f)
     n_awake = len(model.awake)
     n_term = len(model.terminal)
     n_short = int((gap_obs["kind"] == "shortnight").sum())
     print(f"\n  Training data: {n_awake} awake gaps, {n_term} terminal (until-morning)", file=f)
-    print(f"  gaps, {n_short} shortnight gaps (â‰¥{SLEEP_GAP_HOURS:.0f}h, bedtime-window start, ended", file=f)
+    print(f"  gaps, {n_short} shortnight gaps (>={SLEEP_GAP_HOURS:.0f}h, bedtime-window start, ended", file=f)
     print(f"  before {decimal_to_time_str(NIGHT_END_SESSION_H % 24)}). P(asleep) counts terminal+shortnight as sleep;", file=f)
     print(f"  the until-morning event counts terminal only (#1).", file=f)
-    print(f"  Shrinkage Îº tuned by contiguous-block CV: Îº = {model.kappa:.0f}", file=f)
-    print(f"  Weekday = night's starting day ('Monday' = Mon evening â†’ Tue morning);", file=f)
+    print(f"  Shrinkage kappa tuned by contiguous-block CV: kappa = {model.kappa:.0f}", file=f)
+    print(f"  Weekday = night's starting day ('Monday' = Mon evening -> Tue morning);", file=f)
     print(f"  weekday enters as a log-odds main effect per regime side (#8).", file=f)
 
-    # â”€â”€ Per-weekday conditional probability + next-tweet median tables â”€â”€
+    # == Per-weekday conditional probability + next-tweet median tables ==
     # Tables show the UNTIL-MORNING event (no more tweets before 5 AM): once a
     # night silence reaches 3h, "in a night-rest gap" is certain by definition,
     # so the until-morning probability is the informative quantity here.
     print(f"\n  (Note: after {SLEEP_GAP_HOURS:.0f}h of silence following a bedtime-window tweet,", file=f)
-    print(f"  'asleep now' is certain by definition â€” tables therefore show the", file=f)
+    print(f"  'asleep now' is certain by definition - tables therefore show the", file=f)
     print(f"  non-degenerate until-morning event probability.)", file=f)
     for day in DAYS_ORDER:
         if not (gap_obs["weekday"] == day).any():
             continue
         header = "  Last tweet  " + "".join(f"{fmt_minutes(m):>8}" for m in SCENARIO_SILENCE_MIN)
 
-        print(f"\n  â”€â”€ {day.upper()} â€” P(no more tweets until 5 AM | last tweet, silence) â”€â”€", file=f)
+        print(f"\n  == {day.upper()} - P(no more tweets until 5 AM | last tweet, silence) ==", file=f)
         print(header, file=f)
         print("  " + "-" * (len(header) - 2), file=f)
         for ls in SCENARIO_LAST_HOURS:
@@ -933,7 +933,7 @@ def sleep_state_inference(tweet_times, f):
                 cells.append(f"{comp['p_term']:>7.0%} ")
             print(f"  {fmt_session_hour(ls)[:8]:<12}" + "".join(cells), file=f)
 
-        print(f"\n     {day} â€” MEDIAN time of next tweet | same evidence (#5)", file=f)
+        print(f"\n     {day} - MEDIAN time of next tweet | same evidence (#5)", file=f)
         wide = "  Last tweet  " + "".join(f"{fmt_minutes(m):>10}" for m in SCENARIO_SILENCE_MIN)
         print(wide, file=f)
         print("  " + "-" * (len(wide) - 2), file=f)
@@ -944,11 +944,11 @@ def sleep_state_inference(tweet_times, f):
                 cells.append(f"{fmt_session_hour(qd[0.5])[:8]:>10}")
             print(f"  {fmt_session_hour(ls)[:8]:<12}" + "".join(cells), file=f)
 
-    # â”€â”€ Data-derived confirmation thresholds â”€â”€
+    # == Data-derived confirmation thresholds ==
     print("\n" + "=" * 70, file=f)
     print("  OPTIMAL DOWN-FOR-THE-NIGHT CONFIRMATION THRESHOLDS (per weekday)", file=f)
     print("  Minimal silence after a tweet at hour H for", file=f)
-    print("  P(no more tweets until 5 AM) â‰¥ target.", file=f)
+    print("  P(no more tweets until 5 AM) >= target.", file=f)
     print("  '*' = the LOWER 95% credible bound also clears the target at that", file=f)
     print("  silence (robust confirmation; #4).", file=f)
     print("=" * 70, file=f)
@@ -956,7 +956,7 @@ def sleep_state_inference(tweet_times, f):
         if not (gap_obs["weekday"] == day).any():
             continue
         print(f"\n  {day}:", file=f)
-        print(f"  {'Last tweet':<12}" + "".join(f"{'â‰¥'+format(t,'.0%'):>10}" for t in CONFIRM_TARGETS), file=f)
+        print(f"  {'Last tweet':<12}" + "".join(f"{'>='+format(t,'.0%'):>10}" for t in CONFIRM_TARGETS), file=f)
         for ls in SCENARIO_LAST_HOURS:
             cells = []
             for target in CONFIRM_TARGETS:
@@ -969,15 +969,15 @@ def sleep_state_inference(tweet_times, f):
                 cells.append((fmt_minutes(found) + ("*" if robust else "")) if found else ">8h")
             print(f"  {fmt_session_hour(ls)[:8]:<12}" + "".join(f"{c:>10}" for c in cells), file=f)
 
-    # â”€â”€ Activity covariate: optimal look-back window selection â”€â”€
+    # == Activity covariate: optimal look-back window selection ==
     sel = model.select_activity_windows()
     print("\n" + "=" * 70, file=f)
-    print("  ACTIVITY COVARIATE â€” OPTIMAL LOOK-BACK WINDOW SELECTION (v2)", file=f)
+    print("  ACTIVITY COVARIATE - OPTIMAL LOOK-BACK WINDOW SELECTION (v2)", file=f)
     print("=" * 70, file=f)
     print(f"\n  Contiguous-block {ACTIVITY_CV_FOLDS}-fold CV (#7: adjacent nights share a fold, no", file=f)
-    print(f"  interleaving leakage). Adoption rule: mean skill âˆ’ 1 SE > 0 AND", file=f)
-    print(f"  â‰¥ {ACTIVITY_MIN_FOLDS_POS}/{ACTIVITY_CV_FOLDS} folds positive. Duration scored on AWAKE gaps only.", file=f)
-    print(f"\n  {'Window':>8} {'Sleep Î”LL/gap (SE)':>22} {'folds+':>7} "
+    print(f"  interleaving leakage). Adoption rule: mean skill - 1 SE > 0 AND", file=f)
+    print(f"  >= {ACTIVITY_MIN_FOLDS_POS}/{ACTIVITY_CV_FOLDS} folds positive. Duration scored on AWAKE gaps only.", file=f)
+    print(f"\n  {'Window':>8} {'Sleep DeltaLL/gap (SE)':>22} {'folds+':>7} "
           f"{'Dur. MSE skill (SE)':>22} {'folds+':>7}", file=f)
     print(f"  {'-'*8} {'-'*22} {'-'*7} {'-'*22} {'-'*7}", file=f)
     for _, r in sel["table"].iterrows():
@@ -988,12 +988,12 @@ def sleep_state_inference(tweet_times, f):
               f"{r['mse_skill']:>+13.2%} ({r['mse_se']:.2%}){mark_d} "
               f"{int(r['mse_folds_pos'])}/{ACTIVITY_CV_FOLDS}", file=f)
     print(f"\n  Selected look-back windows (* above):", file=f)
-    print(f"  â”œâ”€ Sleep-onset : "
+    print(f"  += Sleep-onset : "
           + (f"{sel['w_sleep']}h" if sel["w_sleep"] is not None
-             else "none (failed the adoption rule â€” covariate not used)"), file=f)
-    print(f"  â””â”€ Gap duration: "
+             else "none (failed the adoption rule - covariate not used)"), file=f)
+    print(f"  += Gap duration: "
           + (f"{sel['w_dur']}h" if sel["w_dur"] is not None
-             else "none (failed the adoption rule â€” covariate not used)"), file=f)
+             else "none (failed the adoption rule - covariate not used)"), file=f)
 
     eff = sel["effects"]
     if "sleep" in eff and eff["sleep"]:
@@ -1012,7 +1012,7 @@ def sleep_state_inference(tweet_times, f):
     print(f"\n  (Scenario tables above are marginal over activity; the live", file=f)
     print(f"  estimate below conditions on it.)", file=f)
 
-    # â”€â”€ Current-state inference â”€â”€
+    # == Current-state inference ==
     if SLEEP_INFER_NOW:
         d, h, m = parse_hhmm_or_datetime(SLEEP_INFER_NOW)
         now = EST.localize(datetime.combine(d, datetime.min.time()) + timedelta(hours=h, minutes=m))
@@ -1029,7 +1029,7 @@ def sleep_state_inference(tweet_times, f):
     night_day = state["weekday"]
     comp = state["components"]
 
-    zone_str = (f"{decimal_to_time_str(SLEEP_ZONE_START_S % 24)[:8]}â€“"
+    zone_str = (f"{decimal_to_time_str(SLEEP_ZONE_START_S % 24)[:8]}-"
                 f"{decimal_to_time_str(SLEEP_ZONE_END_S % 24)[:8]}")
 
     print("\n" + "=" * 70, file=f)
@@ -1042,74 +1042,74 @@ def sleep_state_inference(tweet_times, f):
              if INGEST_LAG_MIN > 0 else ""), file=f)
     print(f"  Night weekday space  : {night_day} (log-odds offset "
           f"{comp['delta_wd']:+.2f})", file=f)
-    print(f"  Clock regime         : {state['regime']} â€” "
+    print(f"  Clock regime         : {state['regime']} - "
           f"{'inside' if state['regime'] == 'NIGHT' else 'outside'} sleep zone ({zone_str} EST)", file=f)
     if state["act_sleep"] is not None:
         tier_lbl = (ACTIVITY_TIER_LABELS[state["tier_sleep"]]
                     if state["tier_sleep"] is not None else "n/a (sparse hour bin)")
         print(f"  Recent activity      : {state['act_sleep']} tweets in the "
-              f"{state['w_sleep']}h before the last tweet â†’ tier {tier_lbl}", file=f)
+              f"{state['w_sleep']}h before the last tweet -> tier {tier_lbl}", file=f)
     if state["act_dur"] is not None and state["w_dur"] != state["w_sleep"]:
         tier_lbl = (ACTIVITY_TIER_LABELS[state["tier_dur"]]
                     if state["tier_dur"] is not None else "n/a (sparse hour bin)")
         print(f"  Activity ({state['w_dur']}h, dur.) : {state['act_dur']} tweets "
-              f"â†’ tier {tier_lbl}", file=f)
+              f"-> tier {tier_lbl}", file=f)
 
     if state["silence_min"] < 0:
-        print("\n  Last tweet is in the future relative to 'now' â€” check the overrides.", file=f)
+        print("\n  Last tweet is in the future relative to 'now' - check the overrides.", file=f)
         return
 
     asleep_k, match_n = direct_empirical_check(tweet_times, night_day,
                                                state["last_s"], state["silence_eff_min"])
 
-    print(f"\n  â”€â”€ POSTERIOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€", file=f)
-    print(f"  P(ASLEEP â€” in a night-rest gap) = {state['p_asleep_now']:.1%}   "
-          f"(95% band: {state['p_lo']:.1%} â€“ {state['p_hi']:.1%})", file=f)
+    print(f"\n  == POSTERIOR =================================================", file=f)
+    print(f"  P(ASLEEP - in a night-rest gap) = {state['p_asleep_now']:.1%}   "
+          f"(95% band: {state['p_lo']:.1%} - {state['p_hi']:.1%})", file=f)
     print(f"  P(AWAKE)                        = {1 - state['p_asleep_now']:.1%}", file=f)
     print(f"  P(no more tweets until {decimal_to_time_str(NIGHT_END_SESSION_H % 24)[:8]}) = "
           f"{state['p_terminal']:.1%}   "
-          f"(95% band: {state['p_term_lo']:.1%} â€“ {state['p_term_hi']:.1%})", file=f)
+          f"(95% band: {state['p_term_lo']:.1%} - {state['p_term_hi']:.1%})", file=f)
     if state["regime"] == "DAY":
-        print(f"  (Daytime regime: the bedtime prior keeps these naturally small â€”", file=f)
+        print(f"  (Daytime regime: the bedtime prior keeps these naturally small -", file=f)
         print(f"  no hard pin, no discontinuity at the 10 PM boundary; #6.)", file=f)
-    print(f"\n  Evidence-matched gaps (started within Â±{int(EVIDENCE_S0_TOL_H*60)}m of "
+    print(f"\n  Evidence-matched gaps (started within +/-{int(EVIDENCE_S0_TOL_H*60)}m of "
           f"{fmt_session_hour(state['last_s'])[:8]},", file=f)
-    print(f"  silent â‰¥ {fmt_minutes(state['silence_eff_min'])}) â€” kernel-weighted share that ended the night:", file=f)
+    print(f"  silent >= {fmt_minutes(state['silence_eff_min'])}) - kernel-weighted share that ended the night:", file=f)
     if comp["tier"] is not None:
-        print(f"  â”œâ”€ {'Same activity tier':<24}: k={comp['k_wd']}, n={comp['n_wd']}"
+        print(f"  += {'Same activity tier':<24}: k={comp['k_wd']}, n={comp['n_wd']}"
               f" (shrunk: {comp['p_tier']:.1%})", file=f)
-    print(f"  â”œâ”€ {'All weekdays, kernel':<24}: k={comp['k_pool']}, n={comp['n_pool']}"
+    print(f"  += {'All weekdays, kernel':<24}: k={comp['k_pool']}, n={comp['n_pool']}"
           f" (shrunk: {comp['p_pool']:.1%})", file=f)
-    print(f"  â”œâ”€ {'Base rate (same regime)':<24}: {comp['p_base']:.1%} (n={comp['n_base']})", file=f)
-    print(f"  â””â”€ {'Weekday log-odds offset':<24}: {comp['delta_wd']:+.2f} ({night_day})", file=f)
+    print(f"  += {'Base rate (same regime)':<24}: {comp['p_base']:.1%} (n={comp['n_base']})", file=f)
+    print(f"  += {'Weekday log-odds offset':<24}: {comp['delta_wd']:+.2f} ({night_day})", file=f)
     if match_n > 0:
         e_lo, e_hi = jeffreys_interval(asleep_k, match_n)
         print(f"\n  Direct empirical cross-check (model-free): on {asleep_k}/{match_n} similar", file=f)
         print(f"  historical {night_day} nights the silence lasted until morning", file=f)
-        print(f"  ({asleep_k/match_n:.0%}, Jeffreys 95% CI {e_lo:.0%}â€“{e_hi:.0%}).", file=f)
+        print(f"  ({asleep_k/match_n:.0%}, Jeffreys 95% CI {e_lo:.0%}-{e_hi:.0%}).", file=f)
     else:
         print(f"\n  Direct empirical cross-check: no historical {night_day} night matched", file=f)
-        print(f"  this evidence pattern within Â±45 min.", file=f)
+        print(f"  this evidence pattern within +/-45 min.", file=f)
 
-    print(f"\n  â”€â”€ NEXT TWEET â€” PREDICTIVE DISTRIBUTION (#5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€", file=f)
+    print(f"\n  == NEXT TWEET - PREDICTIVE DISTRIBUTION (#5) =================", file=f)
     qd = state["q_next_dt"]
     print(f"  Median           : {qd[0.5].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
-    print(f"  50% interval     : {qd[0.25].strftime('%I:%M %p')} â€“ "
+    print(f"  50% interval     : {qd[0.25].strftime('%I:%M %p')} - "
           f"{qd[0.75].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
     print(f"  90th percentile  : {qd[0.9].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
     print(f"  (effective pool weight: {state['q_next_neff']:.1f})", file=f)
     print(f"\n  Secondary two-branch expectation:", file=f)
-    print(f"  â”œâ”€ If he tweets again before the morning : "
-          f"â‰ˆ {state['awake_exp_dt'].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
-    print(f"  â”œâ”€ If the silence lasts until the morning: "
-          f"â‰ˆ {state['wake_exp_dt'].strftime('%I:%M %p EST (%a %m/%d)')}"
+    print(f"  += If he tweets again before the morning : "
+          f"~ {state['awake_exp_dt'].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
+    print(f"  += If the silence lasts until the morning: "
+          f"~ {state['wake_exp_dt'].strftime('%I:%M %p EST (%a %m/%d)')}"
           f"  [bedtime-conditioned; #3]", file=f)
-    print(f"  â””â”€ Probability-weighted mean             : "
+    print(f"  += Probability-weighted mean             : "
           f"{state['expected_next_dt'].strftime('%I:%M %p EST (%a %m/%d)')}", file=f)
     print("\n" + "=" * 70 + "\n", file=f)
 
 
-# â”€â”€ Monitor Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Monitor Mode =============================================================
 MONITOR_LOG_COLUMNS = [
     "logged_at_est", "regime", "weekday_space", "last_tweet_est", "silence_min",
     "p_asleep_now", "p_asleep_lo", "p_asleep_hi",
@@ -1199,11 +1199,11 @@ def _safe_full_report(label):
 def run_monitor():
     """Self-scheduling loop: one evaluation every MONITOR_INTERVAL_MIN minutes,
     logged to MONITOR_LOG_FILENAME. The full analysis report is written once
-    at startup and re-written daily at DAILY_REPORT_HOUR_EST â€” both run inside
+    at startup and re-written daily at DAILY_REPORT_HOUR_EST - both run inside
     this single-threaded loop, so the two schedules cannot conflict.
-    Failure tolerance: CSV unreachable/mid-write â†’ reuse last good data;
-    shrunken CSV â†’ keep previous data; locked log â†’ queue rows and retry;
-    failed report â†’ retried at the next slot; model rebuilt only on change."""
+    Failure tolerance: CSV unreachable/mid-write -> reuse last good data;
+    shrunken CSV -> keep previous data; locked log -> queue rows and retry;
+    failed report -> retried at the next slot; model rebuilt only on change."""
     print(f"Monitor mode (v2): evaluating every {MONITOR_INTERVAL_MIN} min -> "
           f"'{MONITOR_LOG_FILENAME}'; full report on startup and daily at "
           f"{decimal_to_time_str(DAILY_REPORT_HOUR_EST % 24)} (Ctrl+C to stop; "
@@ -1288,7 +1288,7 @@ def run_monitor():
         print("\nMonitor stopped.")
 
 
-# â”€â”€ Main Execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# == Main Execution ==========================================================
 def run_analysis():
     with open(OUTPUT_FILENAME, "w", encoding="utf-8") as f:
         original_stdout = sys.stdout
@@ -1324,7 +1324,7 @@ def run_analysis():
             sys.stdout = original_stdout
 
     try:
-        print(f"âœ… Analysis complete. All output saved to '{OUTPUT_FILENAME}'")
+        print(f"Analysis complete. All output saved to '{OUTPUT_FILENAME}'")
     except UnicodeEncodeError:
         print(f"Analysis complete. All output saved to '{OUTPUT_FILENAME}'")
 
