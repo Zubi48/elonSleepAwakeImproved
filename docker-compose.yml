@@ -20,5 +20,4 @@ networks:
 
 volumes:
   predictor-data:
-    external: true
-    name: predictor-data
+    name: elon-sleep-awake-data
