@@ -1,4 +1,4 @@
-pandas
-numpy
-scipy
-pytz
+pandas==2.3.3
+numpy==2.4.6
+scipy==1.17.1
+pytz==2026.2
